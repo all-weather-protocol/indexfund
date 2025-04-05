@@ -13,145 +13,150 @@ between crypto assets and stablecoins based on market sentiment.
 """
 
 from datetime import datetime
-import random
-import numpy as np
 
 from config import STAKING_CONFIG
 from data_loading import extract_current_data
-from weighting import calculate_index_weights
 from metrics import calculate_portfolio_metrics
+from weighting import calculate_index_weights
 
 # ------------------------------------------------------------------------------
 # Portfolio Data Structure
 # ------------------------------------------------------------------------------
 
+
 def create_portfolio_structure(start_timestamp, stablecoin_allocation=0.5):
     """
     Create a new portfolio data structure with clear separation of units.
-    
+
     Args:
         start_timestamp (int): First timestamp in the dataset
         stablecoin_allocation (float): Target percentage of portfolio to allocate to stablecoin
-        
+
     Returns:
         dict: A structured portfolio with separate tracking for quantities, values, and allocations
     """
     return {
         "tokens": {},  # Will contain per-token data
         "stablecoin": {
-            "quantity": 0.0,               # Amount of stablecoin
-            "usd_value": 0.0,              # Current USD value of stablecoin
-            "target_allocation": stablecoin_allocation  # Target % of total portfolio
+            "quantity": 0.0,  # Amount of stablecoin
+            "usd_value": 0.0,  # Current USD value of stablecoin
+            "target_allocation": stablecoin_allocation,  # Target % of total portfolio
         },
-        "volatile_allocation": 1.0 - stablecoin_allocation,  # % allocated to volatile assets
-        "total_usd_value": 0.0,            # Total portfolio value in USD
+        "volatile_allocation": 1.0
+        - stablecoin_allocation,  # % allocated to volatile assets
+        "total_usd_value": 0.0,  # Total portfolio value in USD
         "metadata": {
             "last_timestamp": start_timestamp,
             "last_rebalance_date": None,
-            "last_allocation_rebalance_date": None
-        }
+            "last_allocation_rebalance_date": None,
+        },
     }
+
 
 def initialize_portfolio(portfolio, token_weights, initial_usd_value, token_prices):
     """
     Initialize a portfolio with token quantities, USD values, and target weights.
-    
+
     Args:
         portfolio (dict): Portfolio structure to initialize
         token_weights (dict): Weights for each token within the volatile portion
         initial_usd_value (float): Initial portfolio value in USD
         token_prices (dict): Current token prices in USD
-        
+
     Returns:
         dict: Initialized portfolio
     """
     # Calculate allocations
     stablecoin_allocation = portfolio["stablecoin"]["target_allocation"]
     volatile_allocation = portfolio["volatile_allocation"]
-    
+
     # Calculate USD values
     stablecoin_usd = initial_usd_value * stablecoin_allocation
     volatile_usd = initial_usd_value * volatile_allocation
-    
+
     # Initialize stablecoin (quantity equals USD value for stablecoin)
     portfolio["stablecoin"]["quantity"] = stablecoin_usd
     portfolio["stablecoin"]["usd_value"] = stablecoin_usd
-    
+
     # Initialize tokens
     portfolio["tokens"] = {}
-    
+
     for token, weight in token_weights.items():
         if token in token_prices and token_prices[token] > 0:
             token_usd_value = volatile_usd * weight
             token_quantity = token_usd_value / token_prices[token]
-            
+
             portfolio["tokens"][token] = {
-                "quantity": token_quantity,           # Amount of tokens
-                "usd_value": token_usd_value,         # Current USD value
-                "target_weight": weight               # Target weight within volatile portion
+                "quantity": token_quantity,  # Amount of tokens
+                "usd_value": token_usd_value,  # Current USD value
+                "target_weight": weight,  # Target weight within volatile portion
             }
-    
+
     # Set total portfolio value
     portfolio["total_usd_value"] = initial_usd_value
-    
+
     # Print summary of initialized portfolio
     print(f"Initialized portfolio with {initial_usd_value:.2f} USD")
     print(f"  Stablecoin: {stablecoin_usd:.2f} USD ({stablecoin_allocation*100:.1f}%)")
     print(f"  Volatile assets: {volatile_usd:.2f} USD ({volatile_allocation*100:.1f}%)")
-    
+
     return portfolio
+
 
 def update_portfolio_values(portfolio, token_prices):
     """
     Update the USD values of all assets in the portfolio based on current prices.
     Only changes USD values, not quantities.
-    
+
     Args:
         portfolio (dict): Portfolio structure
         token_prices (dict): Current token prices in USD
-        
+
     Returns:
         dict: Updated portfolio with new USD values
     """
     volatile_usd_total = 0.0
-    
+
     # Update token USD values
     for token, data in portfolio["tokens"].items():
         if token in token_prices:
             # Calculate new USD value based on quantity and current price
             data["usd_value"] = data["quantity"] * token_prices[token]
             volatile_usd_total += data["usd_value"]
-    
+
     # Stablecoin value equals its quantity (assuming $1 price)
     stablecoin_usd = portfolio["stablecoin"]["quantity"]
     portfolio["stablecoin"]["usd_value"] = stablecoin_usd
-    
+
     # Update total portfolio value
     portfolio["total_usd_value"] = volatile_usd_total + stablecoin_usd
-    
+
     return portfolio
+
 
 def calculate_portfolio_total_value(portfolio):
     """
     Calculate the total portfolio value in USD.
-    
+
     Args:
         portfolio (dict): Portfolio structure
-        
+
     Returns:
         float: Total portfolio value in USD
     """
     # Sum token values
     token_value = sum(data["usd_value"] for data in portfolio["tokens"].values())
-    
+
     # Add stablecoin value
     total_value = token_value + portfolio["stablecoin"]["usd_value"]
-    
+
     return total_value
+
 
 # ------------------------------------------------------------------------------
 # Core Portfolio Calculation Functions
 # ------------------------------------------------------------------------------
+
 
 def calculate_historical_index_prices(
     historical_data,
@@ -223,13 +228,12 @@ def calculate_historical_index_prices(
         # Initialize positions if this is the first timestamp
         if not is_initialized:
             portfolio = initialize_portfolio(
-                portfolio,
-                current_weights,
-                initial_value,
-                current_prices
+                portfolio, current_weights, initial_value, current_prices
             )
             is_initialized = True
-            print(f"Portfolio initialized with {stablecoin_allocation*100:.1f}% stablecoin allocation")
+            print(
+                f"Portfolio initialized with {stablecoin_allocation*100:.1f}% stablecoin allocation"
+            )
 
         # Apply staking rewards if enabled (do this before rebalancing)
         if apply_staking:
@@ -240,36 +244,30 @@ def calculate_historical_index_prices(
 
         # Periodic rebalancing based on frequency
         if should_rebalance(
-            current_date, 
-            portfolio["metadata"]["last_rebalance_date"], 
-            rebalance_frequency
+            current_date,
+            portfolio["metadata"]["last_rebalance_date"],
+            rebalance_frequency,
         ):
             rebalance_portfolio_tokens(
-                portfolio,
-                current_weights,
-                current_prices,
-                timestamp
+                portfolio, current_weights, current_prices, timestamp
             )
-            
+
             # Update rebalance date
             portfolio["metadata"]["last_rebalance_date"] = current_date
             rebalance_count += 1
-            
+
             # After rebalancing tokens, we might also need to rebalance stablecoin allocation
             # based on fear and greed if available
             if current_fear_greed:
                 fear_greed_adjusted = process_fear_greed_rebalancing(
-                    portfolio,
-                    current_fear_greed,
-                    current_prices,
-                    timestamp
+                    portfolio, current_fear_greed, current_prices, timestamp
                 )
                 if fear_greed_adjusted:
                     fear_greed_rebalance_count += 1
 
         # Update portfolio values with current prices
         update_portfolio_values(portfolio, current_prices)
-        
+
         # Store result
         result.append([timestamp, portfolio["total_usd_value"]])
 
@@ -278,20 +276,22 @@ def calculate_historical_index_prices(
 
     # Calculate performance metrics
     metrics = calculate_portfolio_metrics(result)
-    
+
     # Add additional information to metrics
     metrics["stablecoin_allocation"] = stablecoin_allocation
     metrics["rebalance_frequency"] = rebalance_frequency
     metrics["rebalance_count"] = rebalance_count
     metrics["fear_greed_rebalance_count"] = fear_greed_rebalance_count
-    
+
     # Final portfolio composition
-    stablecoin_pct = portfolio["stablecoin"]["usd_value"] / portfolio["total_usd_value"] * 100
+    stablecoin_pct = (
+        portfolio["stablecoin"]["usd_value"] / portfolio["total_usd_value"] * 100
+    )
     volatile_pct = 100 - stablecoin_pct
-    
+
     metrics["final_stablecoin_pct"] = stablecoin_pct
     metrics["final_volatile_pct"] = volatile_pct
-    
+
     # Token weights within volatile portion
     if portfolio["total_usd_value"] > 0:
         token_values = {}
@@ -299,17 +299,22 @@ def calculate_historical_index_prices(
             token_pct = (data["usd_value"] / portfolio["total_usd_value"]) * 100
             token_values[token] = {
                 "usd_value": data["usd_value"],
-                "percentage": token_pct
+                "percentage": token_pct,
             }
         metrics["token_values"] = token_values
 
     # Print summary statistics
     print(f"Simulation complete: {method} with {rebalance_frequency} rebalancing")
-    print(f"  Initial allocation: {stablecoin_allocation*100:.1f}% stablecoin, {(1-stablecoin_allocation)*100:.1f}% crypto")
-    print(f"  Final allocation: {stablecoin_pct:.1f}% stablecoin, {volatile_pct:.1f}% crypto")
+    print(
+        f"  Initial allocation: {stablecoin_allocation*100:.1f}% stablecoin, {(1-stablecoin_allocation)*100:.1f}% crypto"
+    )
+    print(
+        f"  Final allocation: {stablecoin_pct:.1f}% stablecoin, {volatile_pct:.1f}% crypto"
+    )
     print(f"  Initial value: ${initial_value:.2f}")
     print(f"  Final value: ${portfolio['total_usd_value']:.2f}")
     print(f"  Return: {metrics['total_return']:.2f}%")
+    print(f"  Annualized ROI: {metrics['annualized_roi']:.2f}%")
     print(f"  Max Drawdown: {metrics['max_drawdown']:.2f}%")
     print(f"  Rebalances performed: {rebalance_count}")
     if fear_greed_map:
@@ -321,6 +326,7 @@ def calculate_historical_index_prices(
 # ------------------------------------------------------------------------------
 # Staking and Rewards Functions
 # ------------------------------------------------------------------------------
+
 
 def calculate_staking_rewards(amount, apr, days):
     """
@@ -348,7 +354,9 @@ def apply_staking_to_portfolio(portfolio, current_timestamp):
         current_timestamp (int): Current timestamp in milliseconds
     """
     # Calculate days since last update
-    days = (current_timestamp - portfolio["metadata"]["last_timestamp"]) / (1000 * 60 * 60 * 24)
+    days = (current_timestamp - portfolio["metadata"]["last_timestamp"]) / (
+        1000 * 60 * 60 * 24
+    )
 
     if days <= 0:
         return
@@ -365,9 +373,7 @@ def apply_staking_to_portfolio(portfolio, current_timestamp):
     # Apply staking to stablecoin if configured
     if "stablecoin" in STAKING_CONFIG and STAKING_CONFIG["stablecoin"] > 0:
         stablecoin_reward = calculate_staking_rewards(
-            portfolio["stablecoin"]["quantity"], 
-            STAKING_CONFIG["stablecoin"], 
-            days
+            portfolio["stablecoin"]["quantity"], STAKING_CONFIG["stablecoin"], days
         )
         portfolio["stablecoin"]["quantity"] += stablecoin_reward
 
@@ -375,6 +381,7 @@ def apply_staking_to_portfolio(portfolio, current_timestamp):
 # ------------------------------------------------------------------------------
 # Rebalancing Logic
 # ------------------------------------------------------------------------------
+
 
 def should_rebalance(current_date, last_rebalance_date, frequency):
     """
@@ -428,27 +435,29 @@ def rebalance_portfolio_tokens(portfolio, target_weights, token_prices, timestam
         for token, data in portfolio["tokens"].items()
         if token in token_prices
     )
-    
+
     # Log rebalancing action
-    print(f"Rebalancing portfolio: volatile assets worth ${current_volatile_value:.2f} at {datetime.fromtimestamp(timestamp / 1000).date()}")
-    
+    print(
+        f"Rebalancing portfolio: volatile assets worth ${current_volatile_value:.2f} at {datetime.fromtimestamp(timestamp / 1000).date()}"
+    )
+
     # Update each token's target weight in the portfolio
     for token, weight in target_weights.items():
         if token in portfolio["tokens"]:
             portfolio["tokens"][token]["target_weight"] = weight
-    
+
     # Calculate new quantities based on target weights
     for token, data in portfolio["tokens"].items():
         if token in token_prices and token_prices[token] > 0:
             # Calculate target USD value based on weight
             target_usd = current_volatile_value * data["target_weight"]
-            
+
             # Calculate new quantity needed
             new_quantity = target_usd / token_prices[token]
-            
+
             # Update quantity
             data["quantity"] = new_quantity
-    
+
     return portfolio
 
 
@@ -470,32 +479,34 @@ def rebalance_stablecoin_allocation(portfolio, new_allocation, token_prices):
     )
     stablecoin_value = portfolio["stablecoin"]["quantity"]
     total_value = volatile_value + stablecoin_value
-    
+
     # Calculate target values based on new allocation
     target_stablecoin_value = total_value * new_allocation
     target_volatile_value = total_value * (1 - new_allocation)
-    
+
     # Adjust stablecoin quantity
     stablecoin_adjustment = target_stablecoin_value - stablecoin_value
     portfolio["stablecoin"]["quantity"] = target_stablecoin_value
     portfolio["stablecoin"]["target_allocation"] = new_allocation
     portfolio["volatile_allocation"] = 1.0 - new_allocation
-    
+
     # If volatile value is zero, we can't adjust token quantities proportionally
     if volatile_value <= 0:
         return portfolio
-    
+
     # Scale all token quantities to match target volatile value
     scaling_factor = target_volatile_value / volatile_value
-    
+
     for token_data in portfolio["tokens"].values():
         token_data["quantity"] *= scaling_factor
-    
+
     # Log the rebalancing action
     action = "Increased" if stablecoin_adjustment > 0 else "Decreased"
-    print(f"{action} stablecoin allocation to {new_allocation:.2f} " +
-          f"(adjusted by ${abs(stablecoin_adjustment):.2f})")
-    
+    print(
+        f"{action} stablecoin allocation to {new_allocation:.2f} "
+        + f"(adjusted by ${abs(stablecoin_adjustment):.2f})"
+    )
+
     return portfolio
 
 
@@ -503,61 +514,68 @@ def rebalance_stablecoin_allocation(portfolio, new_allocation, token_prices):
 # Sentiment-Based Allocation Adjustment (Fear & Greed)
 # ------------------------------------------------------------------------------
 
+
 def process_fear_greed_rebalancing(portfolio, fear_greed_data, token_prices, timestamp):
     """
     Process rebalancing based on fear and greed index data.
     Uses a contrarian approach - more crypto in fear, more stablecoin in greed.
 
     Args:
-        portfolio (dict): Portfolio data structure 
+        portfolio (dict): Portfolio data structure
         fear_greed_data (dict): Fear and greed data for the current timestamp
         token_prices (dict): Current token prices
         timestamp (int): Current timestamp for logging
-        
+
     Returns:
         bool: True if rebalancing occurred, False otherwise
     """
     if not fear_greed_data:
         return False
-    
+
     # Define allocation limits and adjustment size
     STABLECOIN_MIN_ALLOCATION = 0.01
     STABLECOIN_MAX_ALLOCATION = 0.99
     ADJUSTMENT_SIZE = 0.1
-    
+
     # Get current stablecoin allocation
     base_allocation = portfolio["stablecoin"]["target_allocation"]
-    
+
     # Default to no change
     new_allocation = base_allocation
-    
+
     # Get sentiment classification
     classification = fear_greed_data["classification"]
-    
+
     # Apply contrarian strategy based on market sentiment
     reason = None
-    
+
     if classification == "Extreme Fear":
         # During extreme fear: reduce stablecoin (buy more crypto)
-        new_allocation = max(base_allocation - ADJUSTMENT_SIZE, STABLECOIN_MIN_ALLOCATION)
+        new_allocation = max(
+            base_allocation - ADJUSTMENT_SIZE, STABLECOIN_MIN_ALLOCATION
+        )
         reason = "Extreme Fear (buying opportunity)"
     elif classification == "Extreme Greed":
         # During extreme greed: increase stablecoin (take profits)
-        new_allocation = min(base_allocation + ADJUSTMENT_SIZE, STABLECOIN_MAX_ALLOCATION)
+        new_allocation = min(
+            base_allocation + ADJUSTMENT_SIZE, STABLECOIN_MAX_ALLOCATION
+        )
         reason = "Extreme Greed (taking profits)"
-        
+
     # If no change needed, return early
     if new_allocation == base_allocation:
         return False
-        
+
     # Log the allocation change
     date_str = datetime.fromtimestamp(timestamp / 1000).date()
     action = "Increased" if new_allocation > base_allocation else "Decreased"
-    print(f"Contrarian strategy: {action} stablecoin to {new_allocation:.2f} due to {reason} at {date_str}")
-    
+    print(
+        f"Contrarian strategy: {action} stablecoin to {new_allocation:.2f} due to {reason} at {date_str}"
+    )
+
     # Apply the new allocation
     rebalance_stablecoin_allocation(portfolio, new_allocation, token_prices)
-    
+
     return True
 
 
@@ -688,4 +706,3 @@ def validate_data_length_consistency(historical_data):
             [f"{token}: {length}" for token, length in lengths.items()]
         )
         return False, f"Tokens have different data lengths: {length_details}"
-

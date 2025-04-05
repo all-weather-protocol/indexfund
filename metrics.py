@@ -4,6 +4,7 @@ Contains functions for calculating financial metrics like returns, volatility, e
 """
 
 import numpy as np
+
 from config import RISK_FREE_RATE, TRADING_DAYS_PER_YEAR
 
 
@@ -145,35 +146,36 @@ def calculate_benchmark_performance(price_data, initial_investment):
 
     return investment_values, metrics
 
+
 def calculate_portfolio_metrics(value_history, risk_free_rate=0.05):
     """
     Calculate various financial metrics for a portfolio's value history.
-    
+
     Args:
         value_history (list): List of portfolio values over time
         risk_free_rate (float): Annual risk-free rate
-        
+
     Returns:
         dict: Dictionary of financial metrics
     """
     # Convert to numpy array for calculations
     values = np.array([value for _, value in value_history])
-    
+
     # Calculate daily returns
     returns = np.diff(values) / values[:-1]
-    
+
     # Calculate max drawdown
     max_drawdown = calculate_max_drawdown(values)
-    
+
     # Calculate volatility (annualized)
     daily_volatility = np.std(returns)
     annual_volatility = daily_volatility * np.sqrt(252) * 100  # As percentage
-    
+
     # Calculate Sharpe ratio
     daily_rf_rate = (1 + risk_free_rate) ** (1 / 252) - 1
     excess_returns = returns - daily_rf_rate
     sharpe_ratio = np.sqrt(252) * np.mean(excess_returns) / np.std(returns)
-    
+
     # Calculate Sortino ratio (using only negative returns)
     downside_returns = returns[returns < 0]
     sortino_ratio = (
@@ -181,12 +183,12 @@ def calculate_portfolio_metrics(value_history, risk_free_rate=0.05):
         if len(downside_returns) > 0
         else 0
     )
-    
+
     # Calculate total return
     initial_value = values[0]
     final_value = values[-1]
     total_return = ((final_value - initial_value) / initial_value) * 100
-    
+    annualized_roi = calculate_annualized_ROI(initial_value, final_value, len(values))
     return {
         "max_drawdown": max_drawdown,
         "volatility": annual_volatility,
@@ -194,5 +196,31 @@ def calculate_portfolio_metrics(value_history, risk_free_rate=0.05):
         "sortino_ratio": sortino_ratio,
         "total_return": total_return,
         "initial_value": initial_value,
-        "final_value": final_value
+        "final_value": final_value,
+        "annualized_roi": annualized_roi,
     }
+
+
+def calculate_annualized_ROI(initial_value, final_value, days):
+    """
+    Calculate Annual Percentage Rate (yearly ROI) based on initial value, final value and number of days.
+
+    Args:
+        initial_value (float): Initial value of the investment
+        final_value (float): Final value of the investment
+        days (int): Number of days in the investment period
+
+    Returns:
+        float: APR as a percentage
+    """
+    if days <= 0 or initial_value <= 0:
+        return 0
+
+    # Calculate total return
+    total_return = (final_value - initial_value) / initial_value
+
+    # Convert to annual rate: (1 + total_return)^(365/days) - 1
+    years = days / 365.0
+    apr = ((1 + total_return) ** (1 / years) - 1) * 100
+
+    return apr
