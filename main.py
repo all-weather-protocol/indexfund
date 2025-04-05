@@ -22,8 +22,14 @@ from data_loading import (
     process_fear_greed_data,
 )
 
+# Import from metrics module
+from metrics import calculate_benchmark_performance, calculate_financial_metrics
+
 # Import from portfolio module
 from portfolio import calculate_historical_index_prices
+
+# Import from utils module
+from utils import validate_data_length_consistency
 
 # Import from visualization module
 from visualization import (
@@ -35,15 +41,6 @@ from visualization import (
 # Import from weighting module
 from weighting import display_initial_weights
 
-# Import from metrics module
-from metrics import (
-    calculate_benchmark_performance,
-    calculate_financial_metrics,
-)
-
-# Import from utils module
-from utils import validate_data_length_consistency
-
 
 def calculate_and_save_strategy_performance(
     historical_data,
@@ -53,6 +50,7 @@ def calculate_and_save_strategy_performance(
     start_date=None,
     stablecoin_allocation=0.5,
     fear_greed_data=None,
+    apply_staking=True,
 ):
     print("stablecoin_allocation", stablecoin_allocation)
     """
@@ -66,6 +64,7 @@ def calculate_and_save_strategy_performance(
         start_date (str or datetime): Optional start date for analysis (format: "YYYY-MM-DD")
         stablecoin_allocation (float): Percentage of portfolio to allocate to stablecoin (0.0-1.0)
         fear_greed_data (list): List of [timestamp, value, value_classification] entries for fear and greed index
+        apply_staking (bool): Whether to apply staking rewards in the simulation
 
     Returns:
         tuple: (index_prices, performance_data)
@@ -75,7 +74,7 @@ def calculate_and_save_strategy_performance(
         historical_data,
         method,
         rebalance_frequency=freq,
-        apply_staking=True,
+        apply_staking=apply_staking,
         start_date=start_date,
         stablecoin_allocation=stablecoin_allocation,
         fear_greed_data=fear_greed_data,
@@ -93,9 +92,9 @@ def calculate_and_save_strategy_performance(
     # Calculate investment value over time (normalized to initial investment)
     # Fixed calculation that preserves stablecoin allocation effects
     # When using stablecoin allocation, we're already getting the correct absolute prices
-    # So we just need to scale to the initial investment amount 
-    investment_value = [price/prices[0] * initial_investment for price in prices]
-    
+    # So we just need to scale to the initial investment amount
+    investment_value = [price / prices[0] * initial_investment for price in prices]
+
     # Note: The raw price series from calculate_historical_index_prices already incorporates
     # the stablecoin allocation effects. The portfolio starts with 100.0, so we just scale
     # by initial_investment/100.0
@@ -104,8 +103,13 @@ def calculate_and_save_strategy_performance(
 
     metrics = calculate_financial_metrics(prices)
 
-    # Create strategy name with stablecoin allocation info
+    # Create strategy name with stablecoin allocation info and staking info
     strategy_name = f"{method.replace('_', ' ').title()} ({freq.title()})"
+
+    # Add staking status to strategy name
+    strategy_name = f"{strategy_name} {'with' if apply_staking else 'without'} Staking"
+
+    # Add stablecoin allocation info if applicable
     if stablecoin_allocation > 0:
         stable_pct = int(stablecoin_allocation * 100)
         index_pct = 100 - stable_pct
@@ -136,6 +140,7 @@ def calculate_and_save_strategy_performance(
             performance_data["start_date"] = start_date.strftime("%Y-%m-%d")
 
     performance_data["stablecoin_allocation"] = stablecoin_allocation
+    performance_data["apply_staking"] = apply_staking
 
     # Add fear and greed data info to performance data if available
     if fear_greed_data:
@@ -160,9 +165,6 @@ def run_performance_analysis(
     initial_investment=DEFAULT_INITIAL_INVESTMENT,
     start_date=None,
     data_dir="./",
-    align_timestamps=True,
-    generate_plot=True,
-    detailed_plot=True,
     fear_greed_file=None,
     stablecoin_allocation=0.5,  # Default to 50% stablecoin allocation
 ):
@@ -176,9 +178,6 @@ def run_performance_analysis(
         initial_investment (float): Initial investment amount
         start_date (str or datetime): Optional start date for analysis
         data_dir (str): Directory containing the CSV files
-        align_timestamps (bool): Whether to align all token data to have the same timestamps
-        generate_plot (bool): Whether to generate a performance comparison plot
-        detailed_plot (bool): Whether to generate a detailed performance plot with metrics
         fear_greed_file (str): Path to the fear and greed index JSON file
         stablecoin_allocation (float): Percentage of portfolio to allocate to stablecoin (0.0-1.0)
 
@@ -202,9 +201,7 @@ def run_performance_analysis(
         start_timestamp = int(start_date_obj.timestamp() * 1000)
         historical_data = filter_data_by_start_date(historical_data, start_timestamp)
 
-    # Align timestamps if requested
-    if align_timestamps:
-        historical_data = align_data_timestamps(historical_data)
+    historical_data = align_data_timestamps(historical_data)
 
     if not historical_data:
         print("Error: No usable data after filtering/alignment.")
@@ -217,7 +214,6 @@ def run_performance_analysis(
         fear_greed_data = process_fear_greed_data(
             fear_greed_file,
             start_date=start_date,
-            align_timestamps=align_timestamps,
             historical_data=historical_data,
         )
         if fear_greed_data:
@@ -287,43 +283,52 @@ def run_performance_analysis(
     # Process each method and rebalancing frequency
     for method in methods:
         for freq in rebalance_frequencies:
-            # Calculate, display, and save strategy performance
-            index_prices, performance_data = calculate_and_save_strategy_performance(
-                historical_data,
-                method,
-                freq,
-                initial_investment,
-                start_date=start_date,
-                stablecoin_allocation=stablecoin_allocation,
-                fear_greed_data=fear_greed_data,
-            )
+            for apply_staking in [False, True]:
+                # Calculate, display, and save strategy performance
+                index_prices, performance_data = (
+                    calculate_and_save_strategy_performance(
+                        historical_data,
+                        method,
+                        freq,
+                        initial_investment,
+                        start_date=start_date,
+                        stablecoin_allocation=stablecoin_allocation,
+                        fear_greed_data=fear_greed_data,
+                        apply_staking=apply_staking,
+                    )
+                )
 
-            # Store results only if we have data
-            if index_prices:
-                key = f"{method}_{freq}"
-                if start_date_str:
-                    key = f"{key}_{start_date_str.replace('-', '')}"
-                all_index_prices[key] = index_prices
+                # Store results only if we have data
+                if index_prices:
+                    key = f"{method}_{freq}"
+                    if start_date_str:
+                        key = f"{key}_{start_date_str.replace('-', '')}"
+                    if not apply_staking:
+                        key = f"{key}_no_staking"
+                    all_index_prices[key] = index_prices
 
-                # Store performance data for plotting
-                strategy_label = f"{method.replace('_', ' ').title()} ({freq.title()})"
-                all_performance_data[strategy_label] = performance_data
+                    # Store performance data for plotting
+                    strategy_label = (
+                        f"{method.replace('_', ' ').title()} ({freq.title()})"
+                    )
+                    if not apply_staking:
+                        strategy_label = f"{strategy_label} No Staking"
+                    all_performance_data[strategy_label] = performance_data
 
     # Generate performance comparison plot if requested
-    if generate_plot and all_performance_data:
+    if all_performance_data:
         base_filename = "strategy_comparison"
         if start_date_str:
             base_filename = f"{base_filename}_{start_date_str.replace('-', '')}"
 
         # Generate detailed performance plot if requested
-        if detailed_plot:
-            detailed_plot_filename = f"detailed_{base_filename}.png"
-            print(
-                f"Generating detailed performance analysis plot: {detailed_plot_filename}"
-            )
-            plot_detailed_performance(
-                all_performance_data, output_file=detailed_plot_filename
-            )
+        detailed_plot_filename = f"detailed_{base_filename}.png"
+        print(
+            f"Generating detailed performance analysis plot: {detailed_plot_filename}"
+        )
+        plot_detailed_performance(
+            all_performance_data, output_file=detailed_plot_filename
+        )
 
     result = all_index_prices
     if fear_greed_data:
@@ -375,21 +380,6 @@ def main():
         help="Directory containing token data CSV files",
     )
     parser.add_argument(
-        "--no-align",
-        action="store_true",
-        help="Disable timestamp alignment across tokens",
-    )
-    parser.add_argument(
-        "--no-plot",
-        action="store_true",
-        help="Disable generating performance comparison plot",
-    )
-    parser.add_argument(
-        "--no-detailed-plot",
-        action="store_true",
-        help="Disable generating detailed performance plot with metrics",
-    )
-    parser.add_argument(
         "--fear-greed-file",
         type=str,
         help="Path to the fear and greed index JSON file",
@@ -411,9 +401,6 @@ def main():
         initial_investment=args.investment,
         start_date=args.start_date,
         data_dir=args.data_dir,
-        align_timestamps=not args.no_align,
-        generate_plot=not args.no_plot,
-        detailed_plot=not args.no_detailed_plot,
         fear_greed_file=args.fear_greed_file,
         stablecoin_allocation=args.stablecoin_allocation,
     )

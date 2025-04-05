@@ -235,16 +235,13 @@ def load_fear_greed_index(json_file_path):
     return None
 
 
-def process_fear_greed_data(
-    json_file_path, start_date=None, align_timestamps=True, historical_data=None
-):
+def process_fear_greed_data(json_file_path, start_date=None, historical_data=None):
     """
     Load fear and greed index data from a JSON file and process it with filtering and timestamp alignment.
 
     Args:
         json_file_path (str): Path to the JSON file containing fear and greed index data
         start_date (str or datetime, optional): Start date to filter data from
-        align_timestamps (bool): Whether to align timestamps with historical_data
         historical_data (dict, optional): Historical token data to align with
 
     Returns:
@@ -270,7 +267,7 @@ def process_fear_greed_data(
         ]
 
     # Align with historical data if requested
-    if align_timestamps and historical_data:
+    if historical_data:
         # Get all timestamps from historical data
         all_timestamps = set()
         for token_data in historical_data.values():
