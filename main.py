@@ -30,7 +30,6 @@ from visualization import (
     create_performance_data,
     plot_detailed_performance,
     print_performance_metrics,
-    save_performance_data,
 )
 
 # Import from weighting module
@@ -150,9 +149,6 @@ def calculate_and_save_strategy_performance(
             filename_parts.append(start_date.replace("-", ""))
         else:
             filename_parts.append(start_date.strftime("%Y%m%d"))
-
-    output_filename = f"{'_'.join(filename_parts)}_performance.json"
-    save_performance_data(performance_data, output_filename)
 
     return index_prices, performance_data
 

@@ -247,7 +247,8 @@ def calculate_historical_index_prices(
             rebalance_portfolio_tokens(
                 portfolio,
                 current_weights,
-                current_prices
+                current_prices,
+                timestamp
             )
             
             # Update rebalance date
@@ -411,7 +412,7 @@ def should_rebalance(current_date, last_rebalance_date, frequency):
     return False
 
 
-def rebalance_portfolio_tokens(portfolio, target_weights, token_prices):
+def rebalance_portfolio_tokens(portfolio, target_weights, token_prices, timestamp):
     """
     Rebalance the token portion of the portfolio to match target weights.
     Updates token quantities but not USD values.
@@ -429,7 +430,7 @@ def rebalance_portfolio_tokens(portfolio, target_weights, token_prices):
     )
     
     # Log rebalancing action
-    print(f"Rebalancing portfolio: volatile assets worth ${current_volatile_value:.2f}")
+    print(f"Rebalancing portfolio: volatile assets worth ${current_volatile_value:.2f} at {datetime.fromtimestamp(timestamp / 1000).date()}")
     
     # Update each token's target weight in the portfolio
     for token, weight in target_weights.items():

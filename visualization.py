@@ -88,18 +88,6 @@ def create_performance_data(
     }
 
 
-def save_performance_data(data, filename):
-    """
-    Save performance data to a JSON file.
-
-    Args:
-        data (dict): Performance data dictionary
-        filename (str): Output filename
-    """
-    with open(filename, "w") as f:
-        json.dump(data, f, indent=2)
-
-
 def plot_detailed_performance(performance_data_dict, output_file=None):
     """
     Create a comprehensive multi-panel plot showing various performance metrics.
