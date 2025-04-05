@@ -3,29 +3,14 @@ Performance metrics calculation functions for the indexfund package.
 Contains functions for calculating financial metrics like returns, volatility, etc.
 """
 
-import json
 from datetime import datetime
 
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
-from config import RISK_FREE_RATE, STAKING_CONFIG, TRADING_DAYS_PER_YEAR
 from matplotlib.gridspec import GridSpec
-from metrics import calculate_max_drawdown, calculate_returns, calculate_volatility
 
-
-def calculate_returns(prices):
-    """
-    Calculate daily returns from a series of prices.
-
-    Args:
-        prices (list): Time series of prices
-
-    Returns:
-        numpy.ndarray: Daily returns as percentage changes
-    """
-    return np.diff(prices) / prices[:-1]
-
+from config import STAKING_CONFIG
 
 
 def print_performance_metrics(
@@ -240,6 +225,197 @@ def plot_detailed_performance(performance_data_dict, output_file=None):
 
     # Add title and adjust layout
     plt.suptitle("Detailed Performance Analysis", fontsize=16)
+    plt.tight_layout(rect=[0, 0, 1, 0.97])
+
+    if output_file:
+        plt.savefig(output_file, dpi=300, bbox_inches="tight")
+        plt.close()
+        return None
+    else:
+        return fig
+
+
+def plot_performance_only(performance_data_dict, output_file=None):
+    """
+    Create a simple plot showing only investment value over time without risk metrics.
+
+    Args:
+        performance_data_dict (dict): Dictionary mapping strategy names to their performance data
+        output_file (str, optional): Path to save the plot image. If None, displays the plot
+
+    Returns:
+        matplotlib.figure.Figure: The figure object if not saved to file
+    """
+    # Create figure
+    fig, ax = plt.subplots(figsize=(12, 8))
+
+    # Plot investment value over time for each strategy
+    for strategy_name, data in performance_data_dict.items():
+        # Convert date strings to datetime objects, then to matplotlib date numbers
+        dates = [
+            mdates.date2num(datetime.strptime(date, "%Y-%m-%d %H:%M:%S"))
+            for date in data["dates"]
+        ]
+        ax.plot(dates, data["investment_values"], label=strategy_name)
+
+    # Add labels and styling
+    ax.set_title("Investment Value Over Time", fontsize=16)
+    ax.set_xlabel("Date", fontsize=12)
+    ax.set_ylabel("Value ($)", fontsize=12)
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="best")
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+
+    # Add initial and final values in legend
+    legend_texts = []
+    for strategy_name, data in performance_data_dict.items():
+        initial = data["initial_investment"]
+        final = data["final_value"]
+        total_return = data["total_return"]
+        legend_texts.append(
+            f"{strategy_name}: ${initial:.0f} → ${final:.2f} ({total_return:.2f}%)"
+        )
+
+    ax.legend(legend_texts, loc="best")
+
+    # Format x-axis to prevent date overlap
+    plt.gcf().autofmt_xdate()
+
+    plt.tight_layout()
+
+    if output_file:
+        plt.savefig(output_file, dpi=300, bbox_inches="tight")
+        plt.close()
+        return None
+    else:
+        return fig
+
+
+def plot_metrics_only(performance_data_dict, output_file=None):
+    """
+    Create a plot showing only metrics comparison without the performance chart.
+
+    Args:
+        performance_data_dict (dict): Dictionary mapping strategy names to their performance data
+        output_file (str, optional): Path to save the plot image. If None, displays the plot
+
+    Returns:
+        matplotlib.figure.Figure: The figure object if not saved to file
+    """
+    # Create figure with subplots
+    fig = plt.figure(figsize=(16, 10))
+    gs = GridSpec(2, 2, figure=fig)
+
+    # Prepare data for bar charts
+    strategies = list(performance_data_dict.keys())
+    total_returns = [data["total_return"] for data in performance_data_dict.values()]
+    volatilities = [
+        data["metrics"]["volatility"] for data in performance_data_dict.values()
+    ]
+    drawdowns = [
+        data["metrics"]["max_drawdown"] for data in performance_data_dict.values()
+    ]
+    sharpe_ratios = [
+        data["metrics"]["sharpe_ratio"] for data in performance_data_dict.values()
+    ]
+    sortino_ratios = [
+        data["metrics"]["sortino_ratio"] for data in performance_data_dict.values()
+    ]
+
+    x = np.arange(len(strategies))
+    width = 0.7
+
+    # Plot 1: Total Returns
+    ax1 = fig.add_subplot(gs[0, 0])
+    bars = ax1.bar(x, total_returns, width)
+
+    # Add value labels
+    for bar in bars:
+        height = bar.get_height()
+        ax1.annotate(
+            f"{height:.1f}%",
+            xy=(bar.get_x() + bar.get_width() / 2, height),
+            xytext=(0, 3),
+            textcoords="offset points",
+            ha="center",
+            va="bottom",
+        )
+
+    ax1.set_title("Total Return (%)", fontsize=14)
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(strategies, rotation=45, ha="right")
+    ax1.grid(True, alpha=0.3, axis="y")
+
+    # Plot 2: Volatility
+    ax2 = fig.add_subplot(gs[0, 1])
+    bars = ax2.bar(x, volatilities, width)
+
+    # Add value labels
+    for bar in bars:
+        height = bar.get_height()
+        ax2.annotate(
+            f"{height:.1f}%",
+            xy=(bar.get_x() + bar.get_width() / 2, height),
+            xytext=(0, 3),
+            textcoords="offset points",
+            ha="center",
+            va="bottom",
+        )
+
+    ax2.set_title("Volatility (%)", fontsize=14)
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(strategies, rotation=45, ha="right")
+    ax2.grid(True, alpha=0.3, axis="y")
+
+    # Plot 3: Max Drawdown
+    ax3 = fig.add_subplot(gs[1, 0])
+    bars = ax3.bar(x, drawdowns, width, color="r")
+
+    # Add value labels
+    for bar in bars:
+        height = bar.get_height()
+        ax3.annotate(
+            f"{height:.1f}%",
+            xy=(bar.get_x() + bar.get_width() / 2, height),
+            xytext=(0, 3),
+            textcoords="offset points",
+            ha="center",
+            va="bottom",
+        )
+
+    ax3.set_title("Maximum Drawdown (%)", fontsize=14)
+    ax3.set_xticks(x)
+    ax3.set_xticklabels(strategies, rotation=45, ha="right")
+    ax3.grid(True, alpha=0.3, axis="y")
+
+    # Plot 4: Sharpe and Sortino Ratios
+    ax4 = fig.add_subplot(gs[1, 1])
+    width = 0.35
+
+    bars1 = ax4.bar(x - width / 2, sharpe_ratios, width, label="Sharpe Ratio")
+    bars2 = ax4.bar(x + width / 2, sortino_ratios, width, label="Sortino Ratio")
+
+    # Add value labels
+    for bars in [bars1, bars2]:
+        for bar in bars:
+            height = bar.get_height()
+            ax4.annotate(
+                f"{height:.2f}",
+                xy=(bar.get_x() + bar.get_width() / 2, height),
+                xytext=(0, 3),
+                textcoords="offset points",
+                ha="center",
+                va="bottom",
+            )
+
+    ax4.set_title("Risk-Adjusted Return Ratios", fontsize=14)
+    ax4.set_xticks(x)
+    ax4.set_xticklabels(strategies, rotation=45, ha="right")
+    ax4.legend()
+    ax4.grid(True, alpha=0.3, axis="y")
+
+    # Add title and adjust layout
+    plt.suptitle("Performance Metrics Comparison", fontsize=16)
     plt.tight_layout(rect=[0, 0, 1, 0.97])
 
     if output_file:

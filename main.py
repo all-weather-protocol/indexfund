@@ -23,11 +23,13 @@ from data_loading import (
 )
 
 # Import from metrics module
+# Import from metrics module
 from metrics import calculate_benchmark_performance, calculate_financial_metrics
 
 # Import from portfolio module
 from portfolio import calculate_historical_index_prices
 
+# Import from utils module
 # Import from utils module
 from utils import validate_data_length_consistency
 
@@ -35,6 +37,8 @@ from utils import validate_data_length_consistency
 from visualization import (
     create_performance_data,
     plot_detailed_performance,
+    plot_metrics_only,
+    plot_performance_only,
     print_performance_metrics,
 )
 
@@ -283,7 +287,12 @@ def run_performance_analysis(
     # Process each method and rebalancing frequency
     for method in methods:
         for freq in rebalance_frequencies:
-            for apply_staking in [False, True]:
+            for apply_staking, use_fear_greed in [(False, False), (True, True)]:
+                # Only use fear/greed data if it's available and we want to use it
+                current_fear_greed = (
+                    fear_greed_data if use_fear_greed and fear_greed_data else None
+                )
+
                 # Calculate, display, and save strategy performance
                 index_prices, performance_data = (
                     calculate_and_save_strategy_performance(
@@ -293,26 +302,38 @@ def run_performance_analysis(
                         initial_investment,
                         start_date=start_date,
                         stablecoin_allocation=stablecoin_allocation,
-                        fear_greed_data=fear_greed_data,
+                        fear_greed_data=current_fear_greed,
                         apply_staking=apply_staking,
                     )
                 )
 
                 # Store results only if we have data
                 if index_prices:
-                    key = f"{method}_{freq}"
+                    key = f"{method}_{freq}_staking_{apply_staking}_feargreed_{use_fear_greed}"
                     if start_date_str:
                         key = f"{key}_{start_date_str.replace('-', '')}"
-                    if not apply_staking:
-                        key = f"{key}_no_staking"
                     all_index_prices[key] = index_prices
 
-                    # Store performance data for plotting
+                    # Create a descriptive strategy label for the plot
                     strategy_label = (
                         f"{method.replace('_', ' ').title()} ({freq.title()})"
                     )
+
+                    # Add staking and fear/greed info to the label
+                    strategy_parts = []
                     if not apply_staking:
-                        strategy_label = f"{strategy_label} No Staking"
+                        strategy_parts.append("No Staking")
+                    else:
+                        strategy_parts.append("With Staking")
+
+                    if use_fear_greed and fear_greed_data:
+                        strategy_parts.append("With Fear/Greed")
+                    else:
+                        strategy_parts.append("No Fear/Greed")
+
+                    # Combine all parts
+                    strategy_label = f"{strategy_label} - {', '.join(strategy_parts)}"
+
                     all_performance_data[strategy_label] = performance_data
 
     # Generate performance comparison plot if requested
@@ -329,6 +350,18 @@ def run_performance_analysis(
         plot_detailed_performance(
             all_performance_data, output_file=detailed_plot_filename
         )
+
+        # Generate performance-only plot without risk metrics
+        performance_only_filename = f"performance_only_{base_filename}.png"
+        print(f"Generating performance-only plot: {performance_only_filename}")
+        plot_performance_only(
+            all_performance_data, output_file=performance_only_filename
+        )
+
+        # Generate metrics-only plot without performance chart
+        metrics_only_filename = f"metrics_only_{base_filename}.png"
+        print(f"Generating metrics-only comparison plot: {metrics_only_filename}")
+        plot_metrics_only(all_performance_data, output_file=metrics_only_filename)
 
     result = all_index_prices
     if fear_greed_data:
