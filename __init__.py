@@ -1,6 +1,5 @@
 """
-Crypto Index Fund Calculation Package
-Provides tools for calculating and analyzing crypto index fund performance.
+Indexfund package for crypto index fund implementation.
 """
 
 # Version info

@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 import numpy as np
 import pytest
 
-from indexfund.metrics import (
+from index500.metrics import (
     calculate_annualized_ROI,
     calculate_benchmark_performance,
     calculate_financial_metrics,
