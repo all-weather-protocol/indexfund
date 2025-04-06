@@ -340,6 +340,7 @@ def calculate_staking_rewards(amount, apr, days):
     Returns:
         float: Rewards earned over the specified period
     """
+
     daily_rate = apr / 365
     return amount * ((1 + daily_rate) ** days - 1)
 
@@ -401,20 +402,18 @@ def should_rebalance(current_date, last_rebalance_date, frequency):
     if last_rebalance_date is None:
         return True
 
+    # Calculate days elapsed since last rebalance
+    days_elapsed = (current_date - last_rebalance_date).days
+
     if frequency == "monthly":
-        return current_date.year > last_rebalance_date.year or (
-            current_date.year == last_rebalance_date.year
-            and current_date.month > last_rebalance_date.month
-        )
+        # Rebalance if at least 30 days have passed
+        return days_elapsed >= 30
     elif frequency == "quarterly":
-        current_quarter = (current_date.month - 1) // 3 + 1
-        last_quarter = (last_rebalance_date.month - 1) // 3 + 1
-        return current_date.year > last_rebalance_date.year or (
-            current_date.year == last_rebalance_date.year
-            and current_quarter > last_quarter
-        )
+        # Rebalance if at least 120 days have passed
+        return days_elapsed >= 120
     elif frequency == "yearly":
-        return current_date.year > last_rebalance_date.year
+        # Rebalance if at least 365 days have passed
+        return days_elapsed >= 365
 
     return False
 
