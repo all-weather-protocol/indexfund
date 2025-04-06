@@ -215,12 +215,6 @@ def calculate_annualized_ROI(initial_value, final_value, days):
     """
     if days <= 0 or initial_value <= 0:
         return 0
-
     # Calculate total return
     total_return = (final_value - initial_value) / initial_value
-
-    # Convert to annual rate: (1 + total_return)^(365/days) - 1
-    years = days / 365.0
-    apr = ((1 + total_return) ** (1 / years) - 1) * 100
-
-    return apr
+    return total_return * (365 / days) * 100

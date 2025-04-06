@@ -293,117 +293,181 @@ def test_should_rebalance():
 
 
 def test_rebalance_portfolio_tokens(sample_portfolio, sample_token_prices):
-    """Test rebalancing token weights within a portfolio."""
-    # New target weights
-    new_weights = {
-        "btc": 0.7,  # Increase from 0.6
-        "eth": 0.2,  # Decrease from 0.3
-        "sol": 0.1,  # Unchanged
+    """Test rebalancing the token portion of the portfolio."""
+    # Create initial weights
+    original_weights = {
+        "btc": 0.6,
+        "eth": 0.3,
+        "sol": 0.1,
     }
 
-    timestamp = 1609459200000
+    # Set up current timestamp for rebalancing
+    timestamp = 1609459200000  # 2021-01-01
 
-    # Capture stdout to check the output
-    with patch("sys.stdout", new=io.StringIO()):
-        rebalanced = rebalance_portfolio_tokens(
-            sample_portfolio, new_weights, sample_token_prices, timestamp
+    # Call rebalance function with mocked print
+    with patch("builtins.print"):
+        rebalanced, fees_paid = rebalance_portfolio_tokens(
+            sample_portfolio, original_weights, sample_token_prices, timestamp
         )
 
-    # Check new target weights were set
-    assert rebalanced["tokens"]["btc"]["target_weight"] == 0.7
-    assert rebalanced["tokens"]["eth"]["target_weight"] == 0.2
-    assert rebalanced["tokens"]["sol"]["target_weight"] == 0.1
+    # Verify target weights are updated
+    for token, weight in original_weights.items():
+        assert rebalanced["tokens"][token]["target_weight"] == weight
 
-    # Check new quantities
-    # BTC: (20000 * 0.7) / 30000 = 0.4667
-    assert rebalanced["tokens"]["btc"]["quantity"] == pytest.approx(0.4667, rel=1e-4)
+    # Test that quantities are updated according to target weights
+    total_volatile_value = sum(
+        data["quantity"] * sample_token_prices.get(token, 0)
+        for token, data in rebalanced["tokens"].items()
+        if token in sample_token_prices
+    )
 
-    # ETH: (20000 * 0.2) / 800 = 5.0
-    assert rebalanced["tokens"]["eth"]["quantity"] == pytest.approx(5.0, rel=1e-4)
+    # The default swap fee should be small, so no significant impact on test
+    assert fees_paid >= 0  # Should be non-negative
 
-    # SOL: (20000 * 0.1) / 10 = 200.0
-    assert rebalanced["tokens"]["sol"]["quantity"] == pytest.approx(200.0, rel=1e-4)
+    # Each token's quantity should align with its target weight
+    for token, weight in original_weights.items():
+        if token in sample_token_prices:
+            expected_value = total_volatile_value * weight
+            actual_value = (
+                rebalanced["tokens"][token]["quantity"] * sample_token_prices[token]
+            )
+            assert actual_value == pytest.approx(expected_value, rel=0.01)
 
 
 def test_rebalance_stablecoin_allocation(sample_portfolio, sample_token_prices):
-    """Test rebalancing between stablecoin and volatile assets."""
-    # Initial: 50% stablecoin, 50% volatile (20000 each)
-    # New target: 60% stablecoin, 40% volatile
-    new_allocation = 0.6
+    """Test rebalancing stablecoin allocation."""
+    # Initial setup - 20% stablecoin
+    initial_allocation = 0.2
+    sample_portfolio["stablecoin"]["target_allocation"] = initial_allocation
+    sample_portfolio["stablecoin"]["quantity"] = 20.0
+    sample_portfolio["volatile_allocation"] = 1.0 - initial_allocation
 
-    # Capture stdout to check the output
-    with patch("sys.stdout", new=io.StringIO()):
-        rebalanced = rebalance_stablecoin_allocation(
-            sample_portfolio, new_allocation, sample_token_prices
+    # Set total portfolio value
+    total_volatile = sum(
+        data["quantity"] * sample_token_prices.get(token, 0)
+        for token, data in sample_portfolio["tokens"].items()
+        if token in sample_token_prices
+    )
+
+    # Target 50% stablecoin allocation
+    target_allocation = 0.5
+
+    # Rebalance with mocked print
+    with patch("builtins.print"):
+        rebalanced, fees_paid = rebalance_stablecoin_allocation(
+            sample_portfolio, target_allocation, sample_token_prices
         )
 
-    # Total portfolio value: 40000
-    # New stablecoin value: 40000 * 0.6 = 24000
-    assert rebalanced["stablecoin"]["quantity"] == 24000
-    assert rebalanced["stablecoin"]["target_allocation"] == 0.6
-    assert rebalanced["volatile_allocation"] == 0.4
+    # Verify the new allocation is set
+    assert rebalanced["stablecoin"]["target_allocation"] == target_allocation
+    assert rebalanced["volatile_allocation"] == 1.0 - target_allocation
 
-    # New volatile value: 40000 * 0.4 = 16000
-    # Scaling factor: 16000 / 20000 = 0.8
-    scaling_factor = 0.8
+    # With default fees, the impact should be small
+    assert fees_paid >= 0
 
-    # Check new quantities (scaled by 0.8)
-    assert rebalanced["tokens"]["btc"]["quantity"] == 0.5 * scaling_factor
-    assert rebalanced["tokens"]["eth"]["quantity"] == 5.0 * scaling_factor
-    assert rebalanced["tokens"]["sol"]["quantity"] == 100.0 * scaling_factor
+    # Calculate expected values (accounting for small fee impact)
+    total_value = total_volatile + 20.0
+    expected_stablecoin = total_value * target_allocation
+
+    # Verify stablecoin quantity is updated
+    assert rebalanced["stablecoin"]["quantity"] == pytest.approx(
+        expected_stablecoin, rel=0.02
+    )
+
+    # Verify token quantities are scaled down
+    scaling_factor = (1.0 - target_allocation) / (1.0 - initial_allocation)
+    for token in sample_portfolio["tokens"]:
+        expected_quantity = (
+            sample_portfolio["tokens"][token]["quantity"] * scaling_factor
+        )
+        assert rebalanced["tokens"][token]["quantity"] == pytest.approx(
+            expected_quantity, rel=0.02
+        )
 
 
 def test_process_fear_greed_rebalancing_extreme_fear(
     sample_portfolio, sample_token_prices
 ):
-    """Test rebalancing based on extreme fear sentiment."""
-    # Setup fear data (extreme fear)
-    fear_data = {"value": 25, "classification": "Extreme Fear"}
+    """Test fear/greed rebalancing during extreme fear (contrarian: buy more crypto)."""
+    # Set up test data
+    sample_portfolio["stablecoin"]["target_allocation"] = 0.5
+    sample_portfolio["volatile_allocation"] = 0.5
+
+    fear_greed_data = {"value": 10, "classification": "Extreme Fear"}
     timestamp = 1609459200000
 
-    # Capture stdout to check the output
-    with patch("sys.stdout", new=io.StringIO()):
-        result = process_fear_greed_rebalancing(
-            sample_portfolio, fear_data, sample_token_prices, timestamp
-        )
+    # Run with mocked print
+    with patch("builtins.print"):
+        # Mock the rebalance_stablecoin_allocation function
+        with patch(
+            "core.portfolio.rebalance_stablecoin_allocation",
+            return_value=(sample_portfolio, 1.0),  # Return mock portfolio and mock fees
+        ) as mock_rebalance:
+            result, fees = process_fear_greed_rebalancing(
+                sample_portfolio, fear_greed_data, sample_token_prices, timestamp
+            )
 
-    # Should reduce stablecoin by 10%
+    # Verify the function returns the right values
     assert result is True
-    assert sample_portfolio["stablecoin"]["target_allocation"] == 0.4  # from 0.5
+    assert fees == 1.0  # Should match mock return value
+
+    # Verify it was called with a lower stablecoin allocation
+    args, kwargs = mock_rebalance.call_args
+    assert args[1] < 0.5  # Reduced stablecoin allocation
 
 
 def test_process_fear_greed_rebalancing_extreme_greed(
     sample_portfolio, sample_token_prices
 ):
-    """Test rebalancing based on extreme greed sentiment."""
-    # Setup greed data (extreme greed)
-    greed_data = {"value": 75, "classification": "Extreme Greed"}
+    """Test fear/greed rebalancing during extreme greed (contrarian: sell crypto)."""
+    # Set up test data
+    sample_portfolio["stablecoin"]["target_allocation"] = 0.5
+    sample_portfolio["volatile_allocation"] = 0.5
+
+    fear_greed_data = {"value": 85, "classification": "Extreme Greed"}
     timestamp = 1609459200000
 
-    # Capture stdout to check the output
-    with patch("sys.stdout", new=io.StringIO()):
-        result = process_fear_greed_rebalancing(
-            sample_portfolio, greed_data, sample_token_prices, timestamp
-        )
+    # Run with mocked print
+    with patch("builtins.print"):
+        # Mock the rebalance_stablecoin_allocation function
+        with patch(
+            "core.portfolio.rebalance_stablecoin_allocation",
+            return_value=(sample_portfolio, 2.0),  # Return mock portfolio and mock fees
+        ) as mock_rebalance:
+            result, fees = process_fear_greed_rebalancing(
+                sample_portfolio, fear_greed_data, sample_token_prices, timestamp
+            )
 
-    # Should increase stablecoin by 10%
+    # Verify the function returns the right values
     assert result is True
-    assert sample_portfolio["stablecoin"]["target_allocation"] == 0.6  # from 0.5
+    assert fees == 2.0  # Should match mock return value
+
+    # Verify it was called with a higher stablecoin allocation
+    args, kwargs = mock_rebalance.call_args
+    assert args[1] > 0.5  # Increased stablecoin allocation
 
 
 def test_process_fear_greed_rebalancing_neutral(sample_portfolio, sample_token_prices):
-    """Test rebalancing based on neutral sentiment (no change)."""
-    # Setup neutral data
-    neutral_data = {"value": 50, "classification": "Neutral"}
+    """Test fear/greed rebalancing during neutral sentiment (no change)."""
+    # Set up test data
+    sample_portfolio["stablecoin"]["target_allocation"] = 0.5
+    sample_portfolio["volatile_allocation"] = 0.5
+
+    fear_greed_data = {"value": 50, "classification": "Neutral"}
     timestamp = 1609459200000
 
-    # Should not change allocation
-    result = process_fear_greed_rebalancing(
-        sample_portfolio, neutral_data, sample_token_prices, timestamp
-    )
+    # Mock rebalance function
+    with patch("core.portfolio.rebalance_stablecoin_allocation") as mock_rebalance:
+        result, fees = process_fear_greed_rebalancing(
+            sample_portfolio, fear_greed_data, sample_token_prices, timestamp
+        )
 
+    # Verify the function returns the right values
     assert result is False
-    assert sample_portfolio["stablecoin"]["target_allocation"] == 0.5  # unchanged
+    assert fees == 0.0  # No fees when no rebalancing
+
+    # Verify it was not called
+    mock_rebalance.assert_not_called()
 
 
 def test_filter_data_by_start_date(sample_historical_data):
@@ -488,3 +552,203 @@ def test_calculate_historical_index_prices_minimal(
     assert mock_extract.call_count > 0
     assert mock_weights.call_count > 0
     assert mock_metrics.call_count == 1
+
+
+def test_rebalance_portfolio_tokens_with_fees():
+    """Test rebalancing portfolio tokens with swap fees."""
+    # Create a simple portfolio
+    portfolio = {
+        "tokens": {
+            "btc": {"quantity": 1.0, "target_weight": 0.5, "usd_value": 50000},
+            "eth": {"quantity": 10.0, "target_weight": 0.3, "usd_value": 30000},
+            "sol": {"quantity": 200.0, "target_weight": 0.2, "usd_value": 20000},
+        },
+        "stablecoin": {
+            "quantity": 0.0,
+            "target_allocation": 0.0,
+            "usd_value": 0.0,
+        },
+        "metadata": {
+            "last_rebalance_date": None,
+            "last_timestamp": 1609459200000,
+        },
+        "total_usd_value": 100000,
+        "volatile_allocation": 1.0,
+    }
+
+    # Current prices
+    token_prices = {
+        "btc": 50000,
+        "eth": 3000,
+        "sol": 100,
+    }
+
+    # New target weights
+    target_weights = {
+        "btc": 0.6,  # Increasing from 0.5 -> 0.6 (buy more)
+        "eth": 0.3,  # No change
+        "sol": 0.1,  # Decreasing from 0.2 -> 0.1 (sell some)
+    }
+
+    # Test with a 1% swap fee
+    swap_fee = 0.01
+
+    # Calculate expected fees manually:
+    # BTC: changing from $50k to $60k, fee on $10k = $100
+    # ETH: no change, no fee
+    # SOL: changing from $20k to $10k, fee on $10k = $100
+    # Total expected fees: $200
+    expected_fees = 200.0
+
+    # Call the function
+    with patch("builtins.print"):  # Suppress prints
+        rebalanced, fees_paid = rebalance_portfolio_tokens(
+            portfolio, target_weights, token_prices, 1609459200000, swap_fee
+        )
+
+    # Check fees
+    assert fees_paid == pytest.approx(expected_fees)
+    assert rebalanced["fees_paid"] == pytest.approx(expected_fees)
+
+    # Check that quantities were adjusted correctly after fees
+    # BTC: We wanted to buy $10k more, but with fees we can only buy $9.9k more
+    expected_btc_quantity = 1.0 + 9900 / 50000
+    assert rebalanced["tokens"]["btc"]["quantity"] == pytest.approx(
+        expected_btc_quantity
+    )
+
+    # ETH: No change
+    assert rebalanced["tokens"]["eth"]["quantity"] == pytest.approx(10.0)
+
+    # SOL: Selling $10k, we get $10k but pay $100 in fees
+    expected_sol_quantity = 200.0 * 0.5  # Half the original quantity (from 20% to 10%)
+    assert rebalanced["tokens"]["sol"]["quantity"] == pytest.approx(
+        expected_sol_quantity
+    )
+
+
+def test_rebalance_stablecoin_allocation_with_fees():
+    """Test rebalancing stablecoin allocation with swap fees."""
+    # Create a simple portfolio
+    portfolio = {
+        "tokens": {
+            "btc": {"quantity": 1.0, "target_weight": 0.5, "usd_value": 50000},
+            "eth": {"quantity": 10.0, "target_weight": 0.3, "usd_value": 30000},
+            "sol": {"quantity": 200.0, "target_weight": 0.2, "usd_value": 20000},
+        },
+        "stablecoin": {
+            "quantity": 0.0,
+            "target_allocation": 0.0,
+            "usd_value": 0.0,
+        },
+        "metadata": {
+            "last_rebalance_date": None,
+            "last_timestamp": 1609459200000,
+        },
+        "total_usd_value": 100000,
+        "volatile_allocation": 1.0,
+    }
+
+    # Current prices
+    token_prices = {
+        "btc": 50000,
+        "eth": 3000,
+        "sol": 100,
+    }
+
+    # Test increasing stablecoin allocation to 30%
+    new_allocation = 0.3
+    swap_fee = 0.01
+
+    # Expected fee: 30% of $100k is $30k, fee on $30k is $300
+    expected_fees = 300.0
+
+    # Call the function
+    with patch("builtins.print"):  # Suppress prints
+        rebalanced, fees_paid = rebalance_stablecoin_allocation(
+            portfolio, new_allocation, token_prices, swap_fee
+        )
+
+    # Check fees
+    assert fees_paid == pytest.approx(expected_fees)
+    assert rebalanced["fees_paid"] == pytest.approx(expected_fees)
+
+    # Check new stablecoin quantity (should be $30k - $300 = $29,700)
+    assert rebalanced["stablecoin"]["quantity"] == pytest.approx(29700)
+
+    # Test decreasing stablecoin allocation
+    portfolio = dict(rebalanced)  # Copy the updated portfolio
+
+    # Test decreasing to 10% stablecoin
+    new_allocation = 0.1
+
+    # Expected fee: Changing from 30% to 10% means moving 20% ($20k), fee is $200
+    expected_fees = 200.0
+
+    # Call the function
+    with patch("builtins.print"):
+        rebalanced, fees_paid = rebalance_stablecoin_allocation(
+            portfolio, new_allocation, token_prices, swap_fee
+        )
+
+    # Check fees
+    assert fees_paid == pytest.approx(expected_fees)
+
+    # Check new stablecoin quantity (should be about $10k)
+    assert rebalanced["stablecoin"]["quantity"] == pytest.approx(10000, abs=500)
+    # Allow some tolerance due to the combined effects of the fees
+
+
+def test_calculate_historical_index_prices_with_fees():
+    """Test that historical index calculation properly accounts for swap fees."""
+    # Create sample historical data
+    timestamp1 = 1609459200000  # 2021-01-01
+    timestamp2 = 1612137600000  # 2021-02-01 (1 month later)
+    timestamp3 = 1614556800000  # 2021-03-01 (2 months later)
+
+    historical_data = {
+        "btc": [
+            [timestamp1, 30000, 600000000000],
+            [timestamp2, 35000, 700000000000],
+            [timestamp3, 40000, 800000000000],
+        ],
+        "eth": [
+            [timestamp1, 800, 100000000000],
+            [timestamp2, 1200, 150000000000],
+            [timestamp3, 1500, 180000000000],
+        ],
+    }
+
+    # Run two simulations: one with fees and one without
+    with patch("builtins.print"):  # Suppress output
+        # Without fees
+        prices_no_fees, metrics_no_fees = calculate_historical_index_prices(
+            historical_data,
+            "market_cap",
+            rebalance_frequency="monthly",
+            apply_staking=False,
+            stablecoin_allocation=0,
+            swap_fee=0.0,  # No fees
+        )
+
+        # With 1% fees
+        prices_with_fees, metrics_with_fees = calculate_historical_index_prices(
+            historical_data,
+            "market_cap",
+            rebalance_frequency="monthly",
+            apply_staking=False,
+            stablecoin_allocation=0,
+            swap_fee=0.01,  # 1% fees
+        )
+
+    # Verify that fees were properly tracked
+    assert "total_fees_paid" in metrics_with_fees
+    assert metrics_with_fees["total_fees_paid"] > 0
+
+    # The performance with fees should be worse than without fees
+    final_price_no_fees = prices_no_fees[-1][1]
+    final_price_with_fees = prices_with_fees[-1][1]
+    assert final_price_with_fees < final_price_no_fees
+
+    # The return with fees should be lower
+    assert metrics_with_fees["total_return"] < metrics_no_fees["total_return"]

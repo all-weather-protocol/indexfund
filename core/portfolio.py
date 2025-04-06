@@ -14,7 +14,7 @@ between crypto assets and stablecoins based on market sentiment.
 
 from datetime import datetime
 
-from config import STAKING_CONFIG
+from config import DEFAULT_SWAP_FEE, STAKING_CONFIG
 from core.data_loading import extract_current_data
 from core.metrics import calculate_portfolio_metrics
 from core.weighting import calculate_index_weights
@@ -166,6 +166,7 @@ def calculate_historical_index_prices(
     start_date=None,
     stablecoin_allocation=0.5,  # Default to 50% in stablecoin
     fear_greed_data=None,  # Optional fear and greed index data
+    swap_fee=DEFAULT_SWAP_FEE,  # Fee for swaps during rebalancing
 ):
     """
     Calculate historical index prices using different weighting methods and options.
@@ -180,6 +181,7 @@ def calculate_historical_index_prices(
         start_date (datetime or str): Optional start date for analysis (format: "YYYY-MM-DD")
         stablecoin_allocation (float): Percentage of total portfolio to allocate to stablecoin (0.0-1.0)
         fear_greed_data (list): List of [timestamp, value, value_classification] entries for fear and greed index
+        swap_fee (float): Fee percentage charged on token swaps during rebalancing
 
     Returns:
         tuple: (price_history, metrics) where:
@@ -213,6 +215,7 @@ def calculate_historical_index_prices(
     # Summary statistics to track
     rebalance_count = 0
     fear_greed_rebalance_count = 0
+    total_fees_paid = 0.0
 
     for timestamp in timestamps:
         current_date = datetime.fromtimestamp(timestamp / 1000)
@@ -248,9 +251,10 @@ def calculate_historical_index_prices(
             portfolio["metadata"]["last_rebalance_date"],
             rebalance_frequency,
         ):
-            rebalance_portfolio_tokens(
-                portfolio, current_weights, current_prices, timestamp
+            portfolio, fees_paid = rebalance_portfolio_tokens(
+                portfolio, current_weights, current_prices, timestamp, swap_fee
             )
+            total_fees_paid += fees_paid
 
             # Update rebalance date
             portfolio["metadata"]["last_rebalance_date"] = current_date
@@ -259,11 +263,12 @@ def calculate_historical_index_prices(
             # After rebalancing tokens, we might also need to rebalance stablecoin allocation
             # based on fear and greed if available
             if current_fear_greed:
-                fear_greed_adjusted = process_fear_greed_rebalancing(
-                    portfolio, current_fear_greed, current_prices, timestamp
+                fear_greed_adjusted, fg_fees = process_fear_greed_rebalancing(
+                    portfolio, current_fear_greed, current_prices, timestamp, swap_fee
                 )
                 if fear_greed_adjusted:
                     fear_greed_rebalance_count += 1
+                    total_fees_paid += fg_fees
 
         # Update portfolio values with current prices
         update_portfolio_values(portfolio, current_prices)
@@ -282,6 +287,7 @@ def calculate_historical_index_prices(
     metrics["rebalance_frequency"] = rebalance_frequency
     metrics["rebalance_count"] = rebalance_count
     metrics["fear_greed_rebalance_count"] = fear_greed_rebalance_count
+    metrics["total_fees_paid"] = total_fees_paid
 
     # Final portfolio composition
     stablecoin_pct = (
@@ -317,6 +323,7 @@ def calculate_historical_index_prices(
     print(f"  Annualized ROI: {metrics['annualized_roi']:.2f}%")
     print(f"  Max Drawdown: {metrics['max_drawdown']:.2f}%")
     print(f"  Rebalances performed: {rebalance_count}")
+    print(f"  Total fees paid: ${total_fees_paid:.2f}")
     if fear_greed_map:
         print(f"  Fear & Greed adjustments: {fear_greed_rebalance_count}")
 
@@ -418,7 +425,9 @@ def should_rebalance(current_date, last_rebalance_date, frequency):
     return False
 
 
-def rebalance_portfolio_tokens(portfolio, target_weights, token_prices, timestamp):
+def rebalance_portfolio_tokens(
+    portfolio, target_weights, token_prices, timestamp, swap_fee_rate=DEFAULT_SWAP_FEE
+):
     """
     Rebalance the token portion of the portfolio to match target weights.
     Updates token quantities but not USD values.
@@ -427,6 +436,11 @@ def rebalance_portfolio_tokens(portfolio, target_weights, token_prices, timestam
         portfolio (dict): Portfolio data structure
         target_weights (dict): Target weights for each token
         token_prices (dict): Current token prices
+        timestamp (int): Current timestamp in milliseconds
+        swap_fee (float): Fee percentage charged on token swaps (default: 1%)
+
+    Returns:
+        tuple: (updated_portfolio, total_fees_paid)
     """
     # Calculate the current USD value of all volatile assets
     current_volatile_value = sum(
@@ -440,27 +454,74 @@ def rebalance_portfolio_tokens(portfolio, target_weights, token_prices, timestam
         f"Rebalancing portfolio: volatile assets worth ${current_volatile_value:.2f} at {datetime.fromtimestamp(timestamp / 1000).date()}"
     )
 
+    # Calculate current token values and weights
+    current_values = {}
+    current_weights = {}
+    for token, data in portfolio["tokens"].items():
+        if token in token_prices and token_prices[token] > 0:
+            current_values[token] = data["quantity"] * token_prices[token]
+            current_weights[token] = (
+                current_values[token] / current_volatile_value
+                if current_volatile_value > 0
+                else 0
+            )
+
     # Update each token's target weight in the portfolio
     for token, weight in target_weights.items():
         if token in portfolio["tokens"]:
             portfolio["tokens"][token]["target_weight"] = weight
 
-    # Calculate new quantities based on target weights
+    # Track total fees
+    total_fees = 0.0
+
+    # Calculate new quantities and fees
     for token, data in portfolio["tokens"].items():
         if token in token_prices and token_prices[token] > 0:
             # Calculate target USD value based on weight
             target_usd = current_volatile_value * data["target_weight"]
+            current_usd = current_values.get(token, 0)
 
-            # Calculate new quantity needed
-            new_quantity = target_usd / token_prices[token]
+            # Calculate the amount being swapped (bought or sold)
+            swap_volume = abs(target_usd - current_usd)
 
-            # Update quantity
-            data["quantity"] = new_quantity
+            # Calculate fee for this swap
+            swap_fee = swap_volume * swap_fee_rate
 
-    return portfolio
+            # Only apply fee to the portion being changed
+            if swap_volume > 0:
+                total_fees += swap_fee
+
+                # If we're buying more of the token, reduce the amount we can buy
+                if target_usd > current_usd:
+                    # We have less money to spend after fees
+                    actual_target_usd = target_usd - swap_fee
+                else:
+                    # We receive less money after selling and paying fees
+                    actual_target_usd = target_usd - swap_fee
+
+                # Calculate new quantity
+                new_quantity = actual_target_usd / token_prices[token]
+                data["quantity"] = new_quantity
+
+    # Adjust the final portfolio value to account for fees paid
+    # This assumes fees are paid from the portfolio itself
+    current_volatile_value -= total_fees
+
+    # Log fee information
+    if total_fees > 0:
+        print(f"Paid ${total_fees:.2f} in swap fees ({swap_fee*100:.2f}% fee rate)")
+
+    if "fees_paid" not in portfolio:
+        portfolio["fees_paid"] = 0.0
+
+    portfolio["fees_paid"] += total_fees
+
+    return portfolio, total_fees
 
 
-def rebalance_stablecoin_allocation(portfolio, new_allocation, token_prices):
+def rebalance_stablecoin_allocation(
+    portfolio, new_allocation, token_prices, swap_fee_rate=DEFAULT_SWAP_FEE
+):
     """
     Rebalance the allocation between stablecoin and volatile assets.
     Updates quantities but not USD values.
@@ -469,6 +530,10 @@ def rebalance_stablecoin_allocation(portfolio, new_allocation, token_prices):
         portfolio (dict): Portfolio data structure
         new_allocation (float): New target stablecoin allocation (0.0-1.0)
         token_prices (dict): Current token prices
+        swap_fee (float): Fee percentage charged on token swaps (default: 1%)
+
+    Returns:
+        tuple: (updated_portfolio, total_fees_paid)
     """
     # Calculate current values
     volatile_value = sum(
@@ -485,13 +550,32 @@ def rebalance_stablecoin_allocation(portfolio, new_allocation, token_prices):
 
     # Adjust stablecoin quantity
     stablecoin_adjustment = target_stablecoin_value - stablecoin_value
+
+    # Calculate fee only on the amount being swapped between stablecoin and volatile assets
+    swap_volume = abs(stablecoin_adjustment)
+    swap_fee = swap_volume * swap_fee_rate
+    total_fees = swap_fee if swap_volume > 0 else 0.0
+
+    # Reduce the effective amount after fees
+    if stablecoin_adjustment > 0:
+        # Converting volatile to stablecoin, less stablecoin received after fee
+        effective_stablecoin_adjustment = stablecoin_adjustment - swap_fee
+        target_stablecoin_value = stablecoin_value + effective_stablecoin_adjustment
+        target_volatile_value = total_value - target_stablecoin_value - swap_fee
+    elif stablecoin_adjustment < 0:
+        # Converting stablecoin to volatile, less volatile received after fee
+        target_volatile_value = volatile_value + stablecoin_adjustment - swap_fee
+        # The amount that actually goes to volatile assets (less fees)
+        target_stablecoin_value = total_value - target_volatile_value - swap_fee
+
+    # Update portfolio with new values
     portfolio["stablecoin"]["quantity"] = target_stablecoin_value
     portfolio["stablecoin"]["target_allocation"] = new_allocation
     portfolio["volatile_allocation"] = 1.0 - new_allocation
 
     # If volatile value is zero, we can't adjust token quantities proportionally
     if volatile_value <= 0:
-        return portfolio
+        return portfolio, total_fees
 
     # Scale all token quantities to match target volatile value
     scaling_factor = target_volatile_value / volatile_value
@@ -503,10 +587,15 @@ def rebalance_stablecoin_allocation(portfolio, new_allocation, token_prices):
     action = "Increased" if stablecoin_adjustment > 0 else "Decreased"
     print(
         f"{action} stablecoin allocation to {new_allocation:.2f} "
-        + f"(adjusted by ${abs(stablecoin_adjustment):.2f})"
+        + f"(adjusted by ${abs(stablecoin_adjustment):.2f}, paid ${total_fees:.2f} in fees)"
     )
 
-    return portfolio
+    if "fees_paid" not in portfolio:
+        portfolio["fees_paid"] = 0.0
+
+    portfolio["fees_paid"] += total_fees
+
+    return portfolio, total_fees
 
 
 # ------------------------------------------------------------------------------
@@ -514,7 +603,9 @@ def rebalance_stablecoin_allocation(portfolio, new_allocation, token_prices):
 # ------------------------------------------------------------------------------
 
 
-def process_fear_greed_rebalancing(portfolio, fear_greed_data, token_prices, timestamp):
+def process_fear_greed_rebalancing(
+    portfolio, fear_greed_data, token_prices, timestamp, swap_fee=DEFAULT_SWAP_FEE
+):
     """
     Process rebalancing based on fear and greed index data.
     Uses a contrarian approach - more crypto in fear, more stablecoin in greed.
@@ -524,12 +615,15 @@ def process_fear_greed_rebalancing(portfolio, fear_greed_data, token_prices, tim
         fear_greed_data (dict): Fear and greed data for the current timestamp
         token_prices (dict): Current token prices
         timestamp (int): Current timestamp for logging
+        swap_fee (float): Fee percentage charged on token swaps
 
     Returns:
-        bool: True if rebalancing occurred, False otherwise
+        tuple: (rebalanced, fees_paid) where:
+            - rebalanced is True if rebalancing occurred, False otherwise
+            - fees_paid is the amount of fees paid during rebalancing
     """
     if not fear_greed_data:
-        return False
+        return False, 0.0
 
     # Define allocation limits and adjustment size
     STABLECOIN_MIN_ALLOCATION = 0.01
@@ -563,7 +657,7 @@ def process_fear_greed_rebalancing(portfolio, fear_greed_data, token_prices, tim
 
     # If no change needed, return early
     if new_allocation == base_allocation:
-        return False
+        return False, 0.0
 
     # Log the allocation change
     date_str = datetime.fromtimestamp(timestamp / 1000).date()
@@ -573,9 +667,11 @@ def process_fear_greed_rebalancing(portfolio, fear_greed_data, token_prices, tim
     )
 
     # Apply the new allocation
-    rebalance_stablecoin_allocation(portfolio, new_allocation, token_prices)
+    portfolio, fees_paid = rebalance_stablecoin_allocation(
+        portfolio, new_allocation, token_prices, swap_fee
+    )
 
-    return True
+    return True, fees_paid
 
 
 def _prepare_fear_greed_data(fear_greed_data):

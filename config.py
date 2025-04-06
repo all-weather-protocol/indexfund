@@ -28,3 +28,6 @@ DEFAULT_TOKENS = ["btc", "eth", "sol", "stablecoin"]
 DEFAULT_METHODS = ["market_cap"]
 DEFAULT_REBALANCE_FREQUENCIES = ["quarterly"]
 DEFAULT_INITIAL_INVESTMENT = 10000
+
+# Rebalancing configuration
+DEFAULT_SWAP_FEE = 0.01  # 1% swap fee for simulating exchange trading costs
