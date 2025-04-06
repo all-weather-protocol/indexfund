@@ -17,8 +17,10 @@ from main import run_performance_analysis
 # Import from strategy module
 from strategy import (
     calculate_strategy_performance,
+    create_strategy_data,
     format_strategy_name,
     generate_strategy_key,
+    process_benchmark_data,
 )
 
 
@@ -187,101 +189,138 @@ def test_calculate_strategy_performance(
     )
 
 
-# @patch("visualization.create_performance_data")
-# def test_create_strategy_data(mock_create_performance_data, sample_index_prices, sample_performance_metrics, sample_investment_values, sample_fear_greed_data):
-#     """Test creating strategy data dictionaries."""
-#     # Mock create_performance_data to return a complete dict with all expected fields
-#     mock_create_performance_data.return_value = {
-#         "initial_investment": 1000.0,
-#         "final_investment": 1100.0,
-#         "dates": ["2021-01-01", "2021-01-02", "2021-01-03"],
-#         "values": [100.0, 105.0, 110.0]
-#     }
+@patch("visualization.create_performance_data")
+def test_create_strategy_data(
+    mock_create_performance_data,
+    sample_index_prices,
+    sample_performance_metrics,
+    sample_investment_values,
+    sample_fear_greed_data,
+):
+    """Test creating strategy data dictionaries."""
+    # Mock create_performance_data to return a complete dict with all expected fields
+    mock_create_performance_data.return_value = {
+        "initial_investment": 1000.0,
+        "final_investment": 1100.0,
+        "dates": ["2021-01-01", "2021-01-02", "2021-01-03"],
+        "values": [100.0, 105.0, 110.0],
+    }
 
-#     # Test with basic parameters
-#     data = create_strategy_data(
-#         sample_index_prices, sample_performance_metrics, sample_investment_values,
-#         1000.0, "market_cap", "monthly", True, 0.5
-#     )
+    # Test with basic parameters
+    data = create_strategy_data(
+        sample_index_prices,
+        sample_performance_metrics,
+        sample_investment_values,
+        1000.0,
+        "market_cap",
+        "monthly",
+        True,
+        0.5,
+    )
 
-#     # Verify key fields
-#     assert data["method"] == "market_cap"
-#     assert data["rebalance_frequency"] == "monthly"
-#     assert data["apply_staking"] is True
-#     assert data["stablecoin_allocation"] == 0.5
-#     assert data["used_fear_greed_data"] is False
-#     assert "initial_investment" in data
-#     assert "final_investment" in data
-#     assert "dates" in data
-#     assert "values" in data
+    # Verify key fields
+    assert data["method"] == "market_cap"
+    assert data["rebalance_frequency"] == "monthly"
+    assert data["apply_staking"] is True
+    assert data["stablecoin_allocation"] == 0.5
+    assert data["used_fear_greed_data"] is False
+    assert "initial_investment" in data
+    assert "dates" in data
+    assert "final_value" in data
+    assert "investment_values" in data
 
-#     # Test with fear/greed data
-#     data = create_strategy_data(
-#         sample_index_prices, sample_performance_metrics, sample_investment_values,
-#         1000.0, "market_cap", "monthly", True, 0.5,
-#         fear_greed_data=sample_fear_greed_data
-#     )
+    # Test with fear/greed data
+    data = create_strategy_data(
+        sample_index_prices,
+        sample_performance_metrics,
+        sample_investment_values,
+        1000.0,
+        "market_cap",
+        "monthly",
+        True,
+        0.5,
+        fear_greed_data=sample_fear_greed_data,
+    )
 
-#     assert data["used_fear_greed_data"] is True
-#     assert data["fear_greed_data_points"] == len(sample_fear_greed_data)
+    assert data["used_fear_greed_data"] is True
+    assert data["fear_greed_data_points"] == len(sample_fear_greed_data)
 
-#     # Test with start date
-#     data = create_strategy_data(
-#         sample_index_prices, sample_performance_metrics, sample_investment_values,
-#         1000.0, "market_cap", "monthly", True, 0.5,
-#         start_date="2021-01-01"
-#     )
+    # Test with start date
+    data = create_strategy_data(
+        sample_index_prices,
+        sample_performance_metrics,
+        sample_investment_values,
+        1000.0,
+        "market_cap",
+        "monthly",
+        True,
+        0.5,
+        start_date="2021-01-01",
+    )
 
-#     assert data["start_date"] == "2021-01-01"
+    assert data["start_date"] == "2021-01-01"
 
-#     # Test with datetime start date
-#     data = create_strategy_data(
-#         sample_index_prices, sample_performance_metrics, sample_investment_values,
-#         1000.0, "market_cap", "monthly", True, 0.5,
-#         start_date=datetime(2021, 1, 1)
-#     )
+    # Test with datetime start date
+    data = create_strategy_data(
+        sample_index_prices,
+        sample_performance_metrics,
+        sample_investment_values,
+        1000.0,
+        "market_cap",
+        "monthly",
+        True,
+        0.5,
+        start_date=datetime(2021, 1, 1),
+    )
 
-#     assert data["start_date"] == "2021-01-01"
+    assert data["start_date"] == "2021-01-01"
 
 
-# @patch("metrics.calculate_benchmark_performance")
-# @patch("visualization.create_performance_data")
-# def test_process_benchmark_data(mock_create_data, mock_benchmark, sample_historical_data):
-#     """Test processing benchmark data."""
-#     # Mock benchmark performance calculation
-#     mock_benchmark.return_value = ([1000.0, 1050.0, 1100.0], {"total_return": 10.0})
+@patch("metrics.calculate_benchmark_performance")
+@patch("visualization.create_performance_data")
+def test_process_benchmark_data(
+    mock_create_data, mock_benchmark, sample_historical_data
+):
+    """Test processing benchmark data."""
+    # Mock benchmark performance calculation
+    mock_benchmark.return_value = (
+        [1000.0, 1050.0, 1100.0],
+        {
+            "max_drawdown": 0.0,
+            "volatility": 0.2803321820974809,
+            "sharpe_ratio": 1676.5534155291866,
+            "sortino_ratio": 0,
+        },
+    )
 
-#     # Mock create_performance_data to return a dictionary with required fields
-#     mock_create_data.return_value = {
-#         "initial_investment": 1000.0,
-#         "final_investment": 1100.0,
-#         "dates": ["2021-01-01", "2021-01-02", "2021-01-03"],
-#         "values": [100.0, 105.0, 110.0]
-#     }
+    # Mock create_performance_data to return a dictionary with required fields
+    mock_create_data.return_value = {
+        "initial_investment": 1000.0,
+        "final_investment": 1100.0,
+        "dates": ["2021-01-01", "2021-01-02", "2021-01-03"],
+        "values": [100.0, 105.0, 110.0],
+    }
 
-#     # Test successful case
-#     performance_data, success = process_benchmark_data(
-#         sample_historical_data, 1000.0
-#     )
+    # Test successful case
+    performance_data, success = process_benchmark_data(sample_historical_data, 1000.0)
+    assert success is True
+    assert performance_data is not None
+    assert "initial_investment" in performance_data
+    assert "final_value" in performance_data
 
-#     assert success is True
-#     assert performance_data is not None
-#     assert "initial_investment" in performance_data
-#     assert "final_investment" in performance_data
+    # Test with missing BTC data
+    no_btc_data = {"eth": sample_historical_data["eth"]}
+    performance_data, success = process_benchmark_data(no_btc_data, 1000.0)
 
-#     # Test with missing BTC data
-#     no_btc_data = {"eth": sample_historical_data["eth"]}
-#     performance_data, success = process_benchmark_data(no_btc_data, 1000.0)
+    assert success is False
+    assert performance_data is None
 
-#     assert success is False
-#     assert performance_data is None
+    # Test with empty BTC data
+    empty_btc_data = {"btc": []}
+    performance_data, success = process_benchmark_data(empty_btc_data, 1000.0)
 
-#     # Test with empty BTC data
-#     empty_btc_data = {"btc": []}
-#     performance_data, success = process_benchmark_data(empty_btc_data, 1000.0)
-
-#     assert success is False
-#     assert performance_data is None
+    assert success is False
+    assert performance_data is None
 
 
 @patch("data_loading.load_historical_data")
