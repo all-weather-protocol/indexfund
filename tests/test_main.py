@@ -432,32 +432,46 @@ def test_run_performance_analysis(
     assert "fear_greed_data" in result
 
 
-# @patch("main.load_and_prepare_data")
-# @patch("main.display_initial_weights")
-# @patch("main.process_benchmark_data")
-# @patch("main.print_benchmark_metrics")
-# @patch("main.calculate_strategy_performance")
-# @patch("main.print_strategy_metrics")
-# @patch("main.create_strategy_data")
-# @patch("main.generate_performance_plots")
-# def test_run_performance_analysis_failure(
-#     mock_generate_plots, mock_create_data, mock_print_metrics,
-#     mock_calculate, mock_print_benchmark, mock_process_benchmark,
-#     mock_display_weights, mock_load_data,
-#     sample_historical_data, sample_fear_greed_data,
-#     sample_index_prices, sample_performance_metrics, sample_investment_values
-# ):
-#     # Test with data loading failure
-#     mock_load_data.return_value = (None, None)
-#     result = run_performance_analysis()
+@patch("main.load_and_prepare_data")
+@patch("main.display_initial_weights")
+@patch("main.process_benchmark_data")
+@patch("main.print_benchmark_metrics")
+@patch("main.calculate_strategy_performance")
+@patch("main.print_strategy_metrics")
+@patch("main.create_strategy_data")
+@patch("main.generate_performance_plots")
+def test_run_performance_analysis_failure(
+    mock_generate_plots,
+    mock_create_data,
+    mock_print_metrics,
+    mock_calculate,
+    mock_print_benchmark,
+    mock_process_benchmark,
+    mock_display_weights,
+    mock_load_data,
+    sample_historical_data,
+    sample_fear_greed_data,
+    sample_index_prices,
+    sample_performance_metrics,
+    sample_investment_values,
+):
+    # Test with data loading failure
+    mock_load_data.return_value = (None, None)
+    mock_process_benchmark.return_value = ({"data": "benchmark"}, True)
+    mock_calculate.return_value = (
+        sample_index_prices,
+        sample_performance_metrics,
+        sample_investment_values,
+    )
+    result = run_performance_analysis()
 
-#     assert result == {'error': 'No data available'}
-#     assert not mock_display_weights.called
+    assert result == {"error": "No data available"}
+    assert not mock_display_weights.called
 
-#     # Test without generating plots
-#     mock_load_data.return_value = (sample_historical_data, sample_fear_greed_data)
-#     mock_generate_plots.reset_mock()
+    # Test without generating plots
+    mock_load_data.return_value = (sample_historical_data, sample_fear_greed_data)
+    mock_generate_plots.reset_mock()
 
-#     result = run_performance_analysis(generate_plots=False)
+    result = run_performance_analysis(generate_plots=False)
 
-#     assert not mock_generate_plots.called
+    assert not mock_generate_plots.called
