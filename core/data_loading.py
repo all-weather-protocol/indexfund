@@ -7,7 +7,7 @@ import csv
 import json
 from datetime import datetime
 
-from utils import validate_data_length_consistency
+from utils.utils import validate_data_length_consistency
 
 
 def load_token_data(token_filename):

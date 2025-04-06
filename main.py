@@ -14,17 +14,17 @@ from config import (
 )
 
 # Import from data_loading module
-from data_loading import load_and_prepare_data
+from core.data_loading import load_and_prepare_data
 
 # Import from reporting module
-from reporting import (
+from core.reporting import (
     generate_performance_plots,
     print_benchmark_metrics,
     print_strategy_metrics,
 )
 
 # Import from strategy module
-from strategy import (
+from core.strategy import (
     calculate_strategy_performance,
     create_strategy_data,
     format_strategy_name,
@@ -33,7 +33,7 @@ from strategy import (
 )
 
 # Import from weighting module
-from weighting import display_initial_weights
+from core.weighting import display_initial_weights
 
 
 def run_performance_analysis(

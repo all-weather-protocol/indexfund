@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from weighting import (
+from core.weighting import (
     calculate_index_weights,
     calculate_weight_market_cap,
     calculate_weight_sqrt_market_cap,
@@ -163,7 +163,7 @@ def test_display_initial_weights(sample_historical_data):
     """Test displaying initial weights for different methods."""
     methods = ["market_cap", "sqrt_market_cap"]
 
-    with patch("weighting.print_portfolio_weights") as mock_print:
+    with patch("core.weighting.print_portfolio_weights") as mock_print:
         display_initial_weights(sample_historical_data, methods)
 
         # Should be called once for each method
@@ -220,10 +220,10 @@ def test_display_initial_weights_with_timestamps():
 
     methods = ["market_cap"]
 
-    with patch("weighting.calculate_index_weights") as mock_calculate:
+    with patch("core.weighting.calculate_index_weights") as mock_calculate:
         mock_calculate.return_value = {"btc": 0.8, "eth": 0.2}
 
-        with patch("weighting.print_portfolio_weights"):
+        with patch("core.weighting.print_portfolio_weights"):
             display_initial_weights(data, methods)
 
             # Should use market caps from the earlier timestamp (timestamp1)

@@ -15,9 +15,9 @@ between crypto assets and stablecoins based on market sentiment.
 from datetime import datetime
 
 from config import STAKING_CONFIG
-from data_loading import extract_current_data
-from metrics import calculate_portfolio_metrics
-from weighting import calculate_index_weights
+from core.data_loading import extract_current_data
+from core.metrics import calculate_portfolio_metrics
+from core.weighting import calculate_index_weights
 
 # ------------------------------------------------------------------------------
 # Portfolio Data Structure

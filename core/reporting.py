@@ -4,13 +4,13 @@ Contains functions for reporting results and generating performance plots.
 """
 
 # Import from metrics module
-from metrics import calculate_benchmark_performance
+from core.metrics import calculate_benchmark_performance
 
 # Import from strategy module
-from strategy import format_strategy_name
+from core.strategy import format_strategy_name
 
 # Import from visualization module
-from visualization import (
+from visualization.visualization import (
     plot_metrics_only,
     plot_performance_only,
     print_performance_metrics,

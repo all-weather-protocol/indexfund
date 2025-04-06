@@ -8,7 +8,7 @@ import tempfile
 from datetime import datetime
 from unittest.mock import patch
 
-from data_loading import (
+from core.data_loading import (
     align_data_timestamps,
     extract_current_data,
     filter_data_by_start_date,

@@ -9,19 +9,19 @@ import numpy as np
 import pytest
 
 # Import from data_loading module
-from data_loading import load_and_prepare_data
-
-# Import from main module
-from main import run_performance_analysis
+from core.data_loading import load_and_prepare_data
 
 # Import from strategy module
-from strategy import (
+from core.strategy import (
     calculate_strategy_performance,
     create_strategy_data,
     format_strategy_name,
     generate_strategy_key,
     process_benchmark_data,
 )
+
+# Import from main module
+from main import run_performance_analysis
 
 
 @pytest.fixture
@@ -139,8 +139,8 @@ def test_generate_strategy_key():
     assert key == "market_cap_none_staking_True_feargreed_True_20210101"
 
 
-@patch("portfolio.calculate_historical_index_prices")
-@patch("metrics.calculate_financial_metrics")
+@patch("core.portfolio.calculate_historical_index_prices")
+@patch("core.metrics.calculate_financial_metrics")
 def test_calculate_strategy_performance(
     mock_calculate_metrics,
     mock_calculate_prices,
@@ -189,7 +189,7 @@ def test_calculate_strategy_performance(
     )
 
 
-@patch("visualization.create_performance_data")
+@patch("visualization.visualization.create_performance_data")
 def test_create_strategy_data(
     mock_create_performance_data,
     sample_index_prices,
@@ -276,8 +276,8 @@ def test_create_strategy_data(
     assert data["start_date"] == "2021-01-01"
 
 
-@patch("metrics.calculate_benchmark_performance")
-@patch("visualization.create_performance_data")
+@patch("core.metrics.calculate_benchmark_performance")
+@patch("visualization.visualization.create_performance_data")
 def test_process_benchmark_data(
     mock_create_data, mock_benchmark, sample_historical_data
 ):
@@ -323,11 +323,11 @@ def test_process_benchmark_data(
     assert performance_data is None
 
 
-@patch("data_loading.load_historical_data")
-@patch("data_loading.filter_data_by_start_date")
-@patch("data_loading.align_data_timestamps")
-@patch("data_loading.process_fear_greed_data")
-@patch("data_loading.validate_data_length_consistency")
+@patch("core.data_loading.load_historical_data")
+@patch("core.data_loading.filter_data_by_start_date")
+@patch("core.data_loading.align_data_timestamps")
+@patch("core.data_loading.process_fear_greed_data")
+@patch("core.data_loading.validate_data_length_consistency")
 def test_load_and_prepare_data(
     mock_validate,
     mock_process_fg,

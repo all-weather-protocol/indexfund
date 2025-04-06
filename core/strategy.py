@@ -6,13 +6,13 @@ Contains functions for creating, formatting, and calculating strategy performanc
 from datetime import datetime
 
 # Import from metrics module
-from metrics import calculate_financial_metrics
+from core.metrics import calculate_financial_metrics
 
 # Import from portfolio module
-from portfolio import calculate_historical_index_prices
+from core.portfolio import calculate_historical_index_prices
 
 # Import from visualization module
-from visualization import create_performance_data
+from visualization.visualization import create_performance_data
 
 
 def format_strategy_name(
@@ -221,7 +221,7 @@ def process_benchmark_data(historical_data, initial_investment, start_date=None)
         return None, False
 
     # Import here to avoid circular imports
-    from metrics import calculate_benchmark_performance
+    from core.metrics import calculate_benchmark_performance
 
     btc_investment, btc_metrics = calculate_benchmark_performance(
         btc_prices, initial_investment
