@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 import pytest
 
-from index500.weighting import (
+from weighting import (
     calculate_index_weights,
     calculate_weight_market_cap,
     calculate_weight_sqrt_market_cap,

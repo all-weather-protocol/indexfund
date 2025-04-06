@@ -279,3 +279,63 @@ def process_fear_greed_data(json_file_path, start_date=None, historical_data=Non
         ]
 
     return fear_greed_data
+
+
+def load_and_prepare_data(tokens, data_dir, start_date=None, fear_greed_file=None):
+    """
+    Load and prepare all necessary data for analysis.
+
+    Args:
+        tokens (list): List of token symbols to analyze
+        data_dir (str): Directory containing the data files
+        start_date (str or datetime, optional): Start date for analysis
+        fear_greed_file (str, optional): Path to fear and greed index file
+
+    Returns:
+        tuple: (historical_data, fear_greed_data) or (None, None) if data loading fails
+    """
+    # Load historical data
+    historical_data = load_historical_data(tokens, data_dir)
+
+    if not historical_data:
+        print("Error: No historical data could be loaded.")
+        return None, None
+
+    # Filter data by start date if provided
+    if start_date:
+        if isinstance(start_date, str):
+            start_date_obj = datetime.strptime(start_date, "%Y-%m-%d")
+        else:
+            start_date_obj = start_date
+
+        start_timestamp = int(start_date_obj.timestamp() * 1000)
+        historical_data = filter_data_by_start_date(historical_data, start_timestamp)
+
+    # Align timestamps across all tokens
+    historical_data = align_data_timestamps(historical_data)
+
+    if not historical_data:
+        print("Error: No usable data after filtering/alignment.")
+        return None, None
+
+    # Load and process fear and greed data if provided
+    fear_greed_data = None
+    if fear_greed_file:
+        print(f"Loading fear and greed index data from {fear_greed_file}")
+        fear_greed_data = process_fear_greed_data(
+            fear_greed_file,
+            start_date=start_date,
+            historical_data=historical_data,
+        )
+        if fear_greed_data:
+            print(
+                f"Successfully loaded {len(fear_greed_data)} fear and greed data points"
+            )
+        else:
+            print("Warning: No usable fear and greed data after processing")
+
+    # Perform validation
+    is_valid, message = validate_data_length_consistency(historical_data)
+    print(f"Data validation: {message}")
+
+    return historical_data, fear_greed_data

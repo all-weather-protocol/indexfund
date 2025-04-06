@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from index500.portfolio import (
+from portfolio import (
     apply_staking_to_portfolio,
     calculate_historical_index_prices,
     calculate_portfolio_total_value,
@@ -206,7 +206,7 @@ def test_calculate_staking_rewards():
 
 
 @patch(
-    "index500.portfolio.STAKING_CONFIG",
+    "portfolio.STAKING_CONFIG",
     {
         "btc": 0.05,  # 5% APR
         "eth": 0.10,  # 10% APR
@@ -455,9 +455,9 @@ def test_validate_data_length_consistency():
     assert is_valid is True
 
 
-@patch("index500.portfolio.extract_current_data")
-@patch("index500.portfolio.calculate_index_weights")
-@patch("index500.portfolio.calculate_portfolio_metrics")
+@patch("portfolio.extract_current_data")
+@patch("portfolio.calculate_index_weights")
+@patch("portfolio.calculate_portfolio_metrics")
 def test_calculate_historical_index_prices_minimal(
     mock_metrics, mock_weights, mock_extract, sample_historical_data
 ):
