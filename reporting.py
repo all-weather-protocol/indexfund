@@ -11,7 +11,6 @@ from strategy import format_strategy_name
 
 # Import from visualization module
 from visualization import (
-    plot_detailed_performance,
     plot_metrics_only,
     plot_performance_only,
     print_performance_metrics,
@@ -113,11 +112,6 @@ def generate_performance_plots(all_performance_data, start_date=None):
         else:
             start_date_str = start_date.strftime("%Y-%m-%d")
         base_filename = f"{base_filename}_{start_date_str.replace('-', '')}"
-
-    # Generate detailed performance plot if requested
-    detailed_plot_filename = f"detailed_{base_filename}.png"
-    print(f"Generating detailed performance analysis plot: {detailed_plot_filename}")
-    plot_detailed_performance(all_performance_data, output_file=detailed_plot_filename)
 
     # Generate performance-only plot without risk metrics
     performance_only_filename = f"performance_only_{base_filename}.png"

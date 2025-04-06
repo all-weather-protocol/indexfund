@@ -35,3 +35,4 @@ jobs:
       run: | 
         # Run tests
         pytest
+        python -m pytest --cov=. tests

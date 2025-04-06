@@ -12,3 +12,7 @@ A web3 index fund
 `python main.py --start-date=2021-03-02 --fear-greed-file=./dataset/fear_and_greed.json --stablecoin-allocation=0.5`
 
 ## Performance
+
+![performace](performance_only_strategy_comparison_20210302.png)
+
+![metrics](metrics_only_strategy_comparison_20210302.png)
